@@ -1,49 +1,4 @@
 
-/*
-Mos 6502
-
-## Emulated Pins
-************************************
-*           +-----------+          *
-*   IRQ --->|           |---> A0   *
-*   NMI --->|           |...       *
-*    RDY--->|           |---> A15  *
-*    RES--->|           |          *
-*    RW <---|           |<--- HALT *
-*  SYNC <---|           |          *
-*           |           |<--> D0   *
-*   (P0)<-->|           |...       *
-*        ...|           |<--> D7   *
-*   (P5)<-->|           |          *
-*           +-----------+          *
-************************************
-
-The input/output P0..P5 pins only exist on the m6510.
-
-The HALT pin is only used by the 6502C (Atari 5200/ Sally), unlike the RDY pin HALT halts
-the cpu during Rd or Wr cycles.
-
-If the RDY pin is active (1) the CPU will loop on the next read
-access until the pin goes inactive.
-
-*/
-
-// pins 0-23 are for address and data lines
-pub const RW_PIN: u64 = 1 << 24;                // memory read or write access (high read, low write)
-pub const SYNC_PIN: u64 =  1 << 25;             // start of a new instruction *not actual pin on Rp2a03, used for debugging emulator
-pub const IRQ_PIN: u64 = 1 << 26;               // maskable interrupt requested 
-pub const NMI_PIN: u64 = 1 << 27;               // non-maskable interrupt requested
-pub const RDY_PIN: u64 = 1 << 28;               // freeze execution at next read cycle
-pub const RES_PIN: u64 = 1 << 29;               // reset CPU
-pub const HALT_PIN: u64 = 1 << 30;              // (6502C only) freeze execution immedialty
-pub const P0_PIN: u64 = 1 << 31;                // (6510 only) input-output pin
-pub const P1_PIN: u64 = 1 << 32;
-pub const P2_PIN: u64 = 1 << 33;
-pub const P3_PIN: u64 = 1 << 34;
-pub const P4_PIN: u64 = 1 << 35;
-pub const P5_PIN: u64 = 1 << 36;
-
-
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub struct FlagsRegister {
     pub carry: bool,
@@ -253,6 +208,7 @@ impl OpState {
     }
 }
 
+//internal state of cpu
 #[derive(Debug, Clone)]
 pub struct Context
 {
@@ -287,6 +243,19 @@ impl Context
             ints: InterruptState::None,
             nmi_detected: false,
         }
+    }
+
+    pub fn reset(&mut self) {
+        self.a = 0;
+        self.x = 0;
+        self.y = 0;
+        self.sp = 0;
+        self.cycle = 0;
+        self.ir = InstructionRegister::new();
+        self.p = FlagsRegister::from(0);
+        self.ops = OpState::new();
+        self.ints = InterruptState::None;
+        self.nmi_detected = false;
     }
 }
 

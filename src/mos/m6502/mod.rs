@@ -2,6 +2,7 @@ mod core;
 mod instructions;
 mod operations;
 pub mod bus;
+pub mod rp2a03;
 
 /*
 Mos 6502
@@ -59,7 +60,7 @@ impl Pinout {
             address: 0,
             data: 0,
             io: 0,
-            rw: Pin::Off,
+            rw: Pin::On,
             sync: Pin::Off,
             irq: Pin::Off,
             nmi: Pin::Off,

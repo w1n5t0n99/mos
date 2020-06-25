@@ -34,6 +34,25 @@ impl Instruction for AdcNoDec {
     }
 }
 
+pub struct Adc {}
+impl Instruction for Adc {
+    fn execute(cpu: &mut Context) {
+        if cpu.p.decimal == false {
+            let sum = (cpu.a as u16) + (cpu.ops.dl as u16) + (cpu.p.carry as u16); 
+            cpu.p.carry = if sum > 255 { true } else {false };
+
+            let result = sum as u8;
+            cpu.a = result;
+            cpu.p.overflow =  if ((cpu.ops.dl ^ result) & (cpu.a & result) & 0x80) == 0x80 { true } else { false };
+            cpu.p.zero = set_zero(cpu.a);
+            cpu.p.negative = set_negative(cpu.a);
+        }
+        else {
+            panic!("decimal mode uniplemented");
+        }
+    }
+}
+
 pub struct And {}
 impl Instruction for And {
     fn execute(cpu: &mut Context) {
@@ -402,6 +421,26 @@ impl Instruction for SbcNoDec {
     cpu.a = result;
     cpu.p.negative = set_negative(cpu.a);
     cpu.p.zero = set_zero(cpu.a);  
+    }
+}
+
+pub struct Sbc {}
+impl Instruction for Sbc {
+    fn execute(cpu: &mut Context) {
+        if cpu.p.decimal == false {
+            let dl = cpu.ops.dl ^ 0xFF;
+            //let sum = cpu.a.wrapping_add(dl).wrapping_add(cpu.p.carry as u8);
+            let sum = (cpu.a as u16) + (dl as u16) + cpu.p.carry as u16;
+            let result = (sum & 0xFF) as u8;
+            cpu.p.carry = if sum > 255 { true } else { false };
+            cpu.p.overflow = if ((cpu.a ^ result) & (dl ^ result) & 0x80) != 0 { true } else { false };
+            cpu.a = result;
+            cpu.p.negative = set_negative(cpu.a);
+            cpu.p.zero = set_zero(cpu.a);
+        }
+        else {
+            panic!("decimal mode not implemented");
+        }    
     }
 }
 

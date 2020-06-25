@@ -223,6 +223,7 @@ pub struct Context
     pub ops: OpState,
     pub ints: InterruptState,
     pub nmi_detected: bool,
+    pub first_cycle: bool,
 }
 
 impl Context
@@ -242,6 +243,7 @@ impl Context
             ops: OpState::new(),
             ints: InterruptState::None,
             nmi_detected: false,
+            first_cycle: false,
         }
     }
 

@@ -1,6 +1,7 @@
 mod core;
 mod instructions;
 mod operations;
+pub mod bus;
 
 /*
 Mos 6502
@@ -37,10 +38,11 @@ pub enum Pin {
     Off,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Pinout {
     pub address: u16,
     pub data: u8,
+    pub io: u8,         // (6510 only) input-output pin
     pub rw: Pin,        // memory read or write access (high read, low write)
     pub sync: Pin,      // start of a new instruction *not actual pin on Rp2a03, used for debugging emulator
     pub irq: Pin,       // maskable interrupt requested 
@@ -48,12 +50,6 @@ pub struct Pinout {
     pub rdy: Pin,       // freeze execution at next read cycle
     pub res: Pin,       // reset CPU
     pub halt: Pin,      // (6502C only) freeze execution immedialty
-    pub p0: Pin,        // (6510 only) input-output pin
-    pub p1: Pin,
-    pub p2: Pin,
-    pub p3: Pin,
-    pub p4: Pin,
-    pub p5: Pin,
 }
 
 //external state of cpu
@@ -62,6 +58,7 @@ impl Pinout {
         Pinout {
             address: 0,
             data: 0,
+            io: 0,
             rw: Pin::Off,
             sync: Pin::Off,
             irq: Pin::Off,
@@ -69,12 +66,6 @@ impl Pinout {
             rdy: Pin::Off,
             res: Pin::Off,
             halt: Pin::Off,
-            p0: Pin::Off,
-            p1: Pin::Off,
-            p2: Pin::Off,
-            p3: Pin::Off,
-            p4: Pin::Off,
-            p5: Pin::Off,
         }
     }
 }

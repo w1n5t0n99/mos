@@ -1620,7 +1620,6 @@ impl Rp2a03 {
             0x8B => "*XAA*",
             // XAS
             0x9B => "XAS",
-            _ => "UNKNOWN",
         }
     }
 

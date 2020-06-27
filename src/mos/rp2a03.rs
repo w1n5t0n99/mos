@@ -84,49 +84,49 @@ impl Rp2a03 {
             0x6801 =>  pinout = pla_c1(&mut self.cpu, bus, pinout),
             0x6802 =>  pinout = pla_c2(&mut self.cpu, bus, pinout),
             0x6803 =>  pinout = pla_c3(&mut self.cpu, bus, pinout),
-            // Adc immediate
+            // AdcNoDec immediate
             0x6900 =>  pinout = immediate_read_c0(&mut self.cpu, bus, pinout),
-            0x6901 =>  pinout = immediate_read_c1::<Adc>(&mut self.cpu, bus, pinout),
-            // Adc zero page read
+            0x6901 =>  pinout = immediate_read_c1::<AdcNoDec>(&mut self.cpu, bus, pinout),
+            // AdcNoDec zero page read
             0x6500 =>  pinout = zeropage_read_c0(&mut self.cpu, bus, pinout),
             0x6501 =>  pinout = zeropage_read_c1(&mut self.cpu, bus, pinout),
-            0x6502 =>  pinout = zeropage_read_c2::<Adc>(&mut self.cpu, bus, pinout),
-            // Adc zero page x read
+            0x6502 =>  pinout = zeropage_read_c2::<AdcNoDec>(&mut self.cpu, bus, pinout),
+            // AdcNoDec zero page x read
             0x7500 =>  pinout = zeropage_x_read_c0(&mut self.cpu, bus, pinout),
             0x7501 =>  pinout = zeropage_x_read_c1(&mut self.cpu, bus, pinout),
             0x7502 =>  pinout = zeropage_x_read_c2(&mut self.cpu, bus, pinout),
-            0x7503 =>  pinout = zeropage_x_read_c3::<Adc>(&mut self.cpu, bus, pinout),
-            // Adc absolute read
+            0x7503 =>  pinout = zeropage_x_read_c3::<AdcNoDec>(&mut self.cpu, bus, pinout),
+            // AdcNoDec absolute read
             0x6D00 =>  pinout = absolute_read_c0(&mut self.cpu, bus, pinout),
             0x6D01 =>  pinout = absolute_read_c1(&mut self.cpu, bus, pinout),
             0x6D02 =>  pinout = absolute_read_c2(&mut self.cpu, bus, pinout),
-            0x6D03 =>  pinout = absolute_read_c3::<Adc>(&mut self.cpu, bus, pinout),
-            // Adc absolute x read
+            0x6D03 =>  pinout = absolute_read_c3::<AdcNoDec>(&mut self.cpu, bus, pinout),
+            // AdcNoDec absolute x read
             0x7D00 =>  pinout = absolute_x_read_c0(&mut self.cpu, bus, pinout),
             0x7D01 =>  pinout = absolute_x_read_c1(&mut self.cpu, bus, pinout),
             0x7D02 =>  pinout = absolute_x_read_c2(&mut self.cpu, bus, pinout),
             0x7D03 =>  pinout = absolute_x_read_c3(&mut self.cpu, bus, pinout),
-            0x7D04 =>  pinout = absolute_x_read_c4::<Adc>(&mut self.cpu, bus, pinout),
-            // Adc absolute y read
+            0x7D04 =>  pinout = absolute_x_read_c4::<AdcNoDec>(&mut self.cpu, bus, pinout),
+            // AdcNoDec absolute y read
             0x7900 =>  pinout = absolute_y_read_c0(&mut self.cpu, bus, pinout),
             0x7901 =>  pinout = absolute_y_read_c1(&mut self.cpu, bus, pinout),
             0x7902 =>  pinout = absolute_y_read_c2(&mut self.cpu, bus, pinout),
             0x7903 =>  pinout = absolute_y_read_c3(&mut self.cpu, bus, pinout),
-            0x7904 =>  pinout = absolute_y_read_c4::<Adc>(&mut self.cpu, bus, pinout),
-            // Adc indirect x read
+            0x7904 =>  pinout = absolute_y_read_c4::<AdcNoDec>(&mut self.cpu, bus, pinout),
+            // AdcNoDec indirect x read
             0x6100 =>  pinout = indirect_x_read_c0(&mut self.cpu, bus, pinout),
             0x6101 =>  pinout = indirect_x_read_c1(&mut self.cpu, bus, pinout),
             0x6102 =>  pinout = indirect_x_read_c2(&mut self.cpu, bus, pinout),
             0x6103 =>  pinout = indirect_x_read_c3(&mut self.cpu, bus, pinout),
             0x6104 =>  pinout = indirect_x_read_c4(&mut self.cpu, bus, pinout),
-            0x6105 =>  pinout = indirect_x_read_c5::<Adc>(&mut self.cpu, bus, pinout),
-            // Adc indirect y read
+            0x6105 =>  pinout = indirect_x_read_c5::<AdcNoDec>(&mut self.cpu, bus, pinout),
+            // AdcNoDec indirect y read
             0x7100 =>  pinout = indirect_y_read_c0(&mut self.cpu, bus, pinout),
             0x7101 =>  pinout = indirect_y_read_c1(&mut self.cpu, bus, pinout),
             0x7102 =>  pinout = indirect_y_read_c2(&mut self.cpu, bus, pinout),
             0x7103 =>  pinout = indirect_y_read_c3(&mut self.cpu, bus, pinout),
             0x7104 =>  pinout = indirect_y_read_c4(&mut self.cpu, bus, pinout),
-            0x7105 =>  pinout = indirect_y_read_c5::<Adc>(&mut self.cpu, bus, pinout),
+            0x7105 =>  pinout = indirect_y_read_c5::<AdcNoDec>(&mut self.cpu, bus, pinout),
             // And immediate
             0x2900 =>  pinout = immediate_read_c0(&mut self.cpu, bus, pinout),
             0x2901 =>  pinout = immediate_read_c1::<And>(&mut self.cpu, bus, pinout),
@@ -668,49 +668,49 @@ impl Rp2a03 {
             0x7E04 => pinout = absolute_x_modify_c4::<Ror>(&mut self.cpu, bus, pinout),
             0x7E05 => pinout = absolute_x_modify_c5(&mut self.cpu, bus, pinout),
             0x7E06 =>  pinout = absolute_x_modify_c6(&mut self.cpu, bus, pinout),
-            // Sbc immediate
+            // SbcNoDec immediate
             0xE900 =>  pinout = immediate_read_c0(&mut self.cpu, bus, pinout),
-            0xE901 =>  pinout = immediate_read_c1::<Sbc>(&mut self.cpu, bus, pinout),
-            // Sbc zero page read
+            0xE901 =>  pinout = immediate_read_c1::<SbcNoDec>(&mut self.cpu, bus, pinout),
+            // SbcNoDec zero page read
             0xE500 =>  pinout = zeropage_read_c0(&mut self.cpu, bus, pinout),
             0xE501 =>  pinout = zeropage_read_c1(&mut self.cpu, bus, pinout),
-            0xE502 =>  pinout = zeropage_read_c2::<Sbc>(&mut self.cpu, bus, pinout),
-            // Sbc zero page x read
+            0xE502 =>  pinout = zeropage_read_c2::<SbcNoDec>(&mut self.cpu, bus, pinout),
+            // SbcNoDec zero page x read
             0xF500 =>  pinout = zeropage_x_read_c0(&mut self.cpu, bus, pinout),
             0xF501 =>  pinout = zeropage_x_read_c1(&mut self.cpu, bus, pinout),
             0xF502 =>  pinout = zeropage_x_read_c2(&mut self.cpu, bus, pinout),
-            0xF503 =>  pinout = zeropage_x_read_c3::<Sbc>(&mut self.cpu, bus, pinout),
-            // Sbc absolute read
+            0xF503 =>  pinout = zeropage_x_read_c3::<SbcNoDec>(&mut self.cpu, bus, pinout),
+            // SbcNoDec absolute read
             0xED00 =>  pinout = absolute_read_c0(&mut self.cpu, bus, pinout),
             0xED01 =>  pinout = absolute_read_c1(&mut self.cpu, bus, pinout),
             0xED02 =>  pinout = absolute_read_c2(&mut self.cpu, bus, pinout),
-            0xED03 =>  pinout = absolute_read_c3::<Sbc>(&mut self.cpu, bus, pinout),
-            // Sbc absolute x read
+            0xED03 =>  pinout = absolute_read_c3::<SbcNoDec>(&mut self.cpu, bus, pinout),
+            // SbcNoDec absolute x read
             0xFD00 =>  pinout = absolute_x_read_c0(&mut self.cpu, bus, pinout),
             0xFD01 =>  pinout = absolute_x_read_c1(&mut self.cpu, bus, pinout),
             0xFD02 =>  pinout = absolute_x_read_c2(&mut self.cpu, bus, pinout),
             0xFD03 =>  pinout = absolute_x_read_c3(&mut self.cpu, bus, pinout),
-            0xFD04 =>  pinout = absolute_x_read_c4::<Sbc>(&mut self.cpu, bus, pinout),
-            // Sbc absolute y read
+            0xFD04 =>  pinout = absolute_x_read_c4::<SbcNoDec>(&mut self.cpu, bus, pinout),
+            // SbcNoDec absolute y read
             0xF900 =>  pinout = absolute_y_read_c0(&mut self.cpu, bus, pinout),
             0xF901 =>  pinout = absolute_y_read_c1(&mut self.cpu, bus, pinout),
             0xF902 =>  pinout = absolute_y_read_c2(&mut self.cpu, bus, pinout),
             0xF903 =>  pinout = absolute_y_read_c3(&mut self.cpu, bus, pinout),
-            0xF904 =>  pinout = absolute_y_read_c4::<Sbc>(&mut self.cpu, bus, pinout),
-            // Sbc indirect x read
+            0xF904 =>  pinout = absolute_y_read_c4::<SbcNoDec>(&mut self.cpu, bus, pinout),
+            // SbcNoDec indirect x read
             0xE100 =>  pinout = indirect_x_read_c0(&mut self.cpu, bus, pinout),
             0xE101 =>  pinout = indirect_x_read_c1(&mut self.cpu, bus, pinout),
             0xE102 =>  pinout = indirect_x_read_c2(&mut self.cpu, bus, pinout),
             0xE103 =>  pinout = indirect_x_read_c3(&mut self.cpu, bus, pinout),
             0xE104 =>  pinout = indirect_x_read_c4(&mut self.cpu, bus, pinout),
-            0xE105 =>  pinout = indirect_x_read_c5::<Sbc>(&mut self.cpu, bus, pinout),
-            // Sbc indirect y read
+            0xE105 =>  pinout = indirect_x_read_c5::<SbcNoDec>(&mut self.cpu, bus, pinout),
+            // SbcNoDec indirect y read
             0xF100 =>  pinout = indirect_y_read_c0(&mut self.cpu, bus, pinout),
             0xF101 =>  pinout = indirect_y_read_c1(&mut self.cpu, bus, pinout),
             0xF102 =>  pinout = indirect_y_read_c2(&mut self.cpu, bus, pinout),
             0xF103 =>  pinout = indirect_y_read_c3(&mut self.cpu, bus, pinout),
             0xF104 =>  pinout = indirect_y_read_c4(&mut self.cpu, bus, pinout),
-            0xF105 =>  pinout = indirect_y_read_c5::<Sbc>(&mut self.cpu, bus, pinout),
+            0xF105 =>  pinout = indirect_y_read_c5::<SbcNoDec>(&mut self.cpu, bus, pinout),
             // Sec single byte
             0x3800 =>  pinout = single_byte_c0(&mut self.cpu, bus, pinout),
             0x3801 =>  pinout = single_byte_c1::<Sec>(&mut self.cpu, bus, pinout),
@@ -1225,9 +1225,9 @@ impl Rp2a03 {
             0x7305 => pinout = undoc_indirect_y_c5::<Rra>( &mut self.cpu, bus, pinout),
             0x7306 => pinout = undoc_indirect_y_c6( &mut self.cpu, bus, pinout),
             0x7307 =>  pinout = undoc_indirect_y_c7(&mut self.cpu, bus, pinout),
-            // Sbc immediate
+            // SbcNoDec immediate
             0xEB00 =>  pinout = immediate_read_c0(&mut self.cpu, bus, pinout),
-            0xEB01 =>  pinout = immediate_read_c1::<Sbc>(&mut self.cpu, bus, pinout),
+            0xEB01 =>  pinout = immediate_read_c1::<SbcNoDec>(&mut self.cpu, bus, pinout),
             // Slo zero page modify
             0x0700 =>  pinout = zeropage_modify_c0(&mut self.cpu, bus, pinout),
             0x0701 =>  pinout = zeropage_modify_c1(&mut self.cpu, bus, pinout),
@@ -1405,10 +1405,12 @@ impl Rp2a03 {
             self.cpu.nmi_detected = true;
         }
 
-        // "pull up" control pins that devices must assert every cycle
+        // "pull up" input pins. these must be asserted every cycle they wish to remain active
         pinout.nmi = Pin::On;
         pinout.irq = Pin::On;
         pinout.rdy = Pin::On;
+        pinout.halt = Pin::On;
+        pinout.rst = Pin::On;
 
         self.cpu.cycle += 1;
         pinout
@@ -1459,8 +1461,8 @@ impl Rp2a03 {
                     InterruptState::Nmi => "NMI",
                 }
             }
-            // ADC
-            0x69 | 0x65 | 0x75 | 0x6D | 0x7D | 0x79 | 0x61 | 0x71 => "ADC",
+            // AdcNoDec
+            0x69 | 0x65 | 0x75 | 0x6D | 0x7D | 0x79 | 0x61 | 0x71 => "Adc",
             // AND
             0x29 | 0x25 | 0x35 | 0x2D | 0x3D | 0x39 | 0x21 | 0x31 => "AND",
             // ASL

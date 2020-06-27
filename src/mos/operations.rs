@@ -1,4 +1,4 @@
-use super::{Pin, Pinout};
+use super::{Ctrl, Pinout};
 use super::core::*;
 use super::instructions::Instruction;
 use super::bus::Bus;
@@ -16,7 +16,7 @@ fn poll_interrupts(cpu: &mut Context, pinout: Pinout) {
         cpu.nmi_detected = false;
     }
     // irq is level detected and must be held every cycle until handled
-    else if pinout.irq == Pin::Off && cpu.p.interrupt_disable != true {
+    else if pinout.ctrl.contains(Ctrl::IRQ) == false && cpu.p.interrupt_disable == false {
         cpu.ints = InterruptState::Irq;
         cpu.ops.reset();
         cpu.ir.reset(0x00);
@@ -28,8 +28,8 @@ fn poll_interrupts(cpu: &mut Context, pinout: Pinout) {
 //====================================================
 macro_rules! first_cycle {
     ($cpu:ident, $bus:ident, $pinout:ident) => {
-        $pinout.sync = Pin::On;
-        $pinout.rw = Pin::On;
+        $pinout.ctrl.set(Ctrl::SYNC, true);
+        $pinout.ctrl.set(Ctrl::RW, true);
         $pinout.address = u16::from($cpu.pc);
         // always fetch opcode
         $pinout = $bus.read($pinout);
@@ -43,9 +43,9 @@ macro_rules! first_cycle {
 
 macro_rules! second_cycle {
     ($cpu:ident, $bus:ident, $pinout:ident) => {
-        $pinout.sync = Pin::Off;
+        $pinout.ctrl.set(Ctrl::SYNC, false);
         // instructions always read next byte after opcode
-        $pinout.rw = Pin::On;
+        $pinout.ctrl.set(Ctrl::RW, true);
         $pinout.address = u16::from($cpu.pc);
         // always fetch byte after opcode
         $pinout = $bus.read($pinout);
@@ -67,7 +67,7 @@ macro_rules! last_cycle {
 
 macro_rules! read_cycle {
     ($cpu:ident, $bus:ident, $pinout:ident, $addr:expr) => {
-        $pinout.rw = Pin::On;
+        $pinout.ctrl.set(Ctrl::RW, true);
         $pinout.address = $addr;
         // get results from bus
         $pinout = $bus.read($pinout);
@@ -79,7 +79,7 @@ macro_rules! read_cycle {
 
 macro_rules! write_cycle {
     ($cpu:ident, $bus:ident, $pinout:ident, $addr:expr, $data: expr) => {
-        $pinout.rw = Pin::Off;
+        $pinout.ctrl.set(Ctrl::RW, false);
         $pinout.address = $addr;
         $pinout.data = $data;
         // get results from bus
@@ -161,7 +161,7 @@ pub fn rst_c8<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pin
 // Break
 //====================================================
 pub fn brk_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     // read instruction byte (discarded)
     second_cycle!(cpu, bus, pinout);
     pinout
@@ -211,7 +211,7 @@ pub fn brk_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pin
 }
 
 pub fn brk_c4<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     // set to_address to fetch pcl
     let addr = match cpu.ints {
         InterruptState::None => to_address(0xFF, 0xFE),
@@ -227,7 +227,7 @@ pub fn brk_c4<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pin
 }
 
 pub fn brk_c5<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     cpu.ints = InterruptState::None;
     // set to_address to fetch pch
     let addr = match cpu.ints {
@@ -242,7 +242,7 @@ pub fn brk_c5<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pin
 }
 
 pub fn brk_c6<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     first_cycle!(cpu, bus, pinout);
     pinout
 }
@@ -251,13 +251,13 @@ pub fn brk_c6<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pin
 // single byte instructions
 //===========================================================
 pub fn single_byte_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     pinout
 }
 
 pub fn single_byte_c1<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     T::execute(cpu);
     last_cycle!(cpu, pinout);
     // if no interrupt do first cycle
@@ -269,14 +269,14 @@ pub fn single_byte_c1<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut B, mu
 // immediate read
 //========================================================================
 pub fn immediate_read_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     cpu.pc.increment();
     pinout
 }
 
 pub fn immediate_read_c1<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     T::execute(cpu);
     last_cycle!(cpu, pinout);
     // if no interrupt do first cycle
@@ -288,14 +288,14 @@ pub fn immediate_read_c1<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut B,
 // zero page read
 //========================================================================
 pub fn zeropage_read_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     cpu.ops.adl = cpu.ops.dl;
     pinout
 }
 
 pub fn zeropage_read_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(0, cpu.ops.adl));
 
     cpu.pc.increment();
@@ -303,7 +303,7 @@ pub fn zeropage_read_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pino
 }
 
 pub fn zeropage_read_c2<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     T::execute(cpu);
     last_cycle!(cpu, pinout);
     // if no interrupt do first cycle
@@ -315,7 +315,7 @@ pub fn zeropage_read_c2<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut B, 
 // absolute read
 //========================================================================
 pub fn absolute_read_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     cpu.ops.adl = cpu.ops.dl;
 
@@ -324,7 +324,7 @@ pub fn absolute_read_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pino
 }
 
 pub fn absolute_read_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, u16::from(cpu.pc));
     cpu.ops.adh = cpu.ops.dl;
 
@@ -332,7 +332,7 @@ pub fn absolute_read_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pino
 }
 
 pub fn absolute_read_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(cpu.ops.adh, cpu.ops.adl));
 
     cpu.pc.increment();
@@ -340,7 +340,7 @@ pub fn absolute_read_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pino
 }
 
 pub fn absolute_read_c3<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     T::execute(cpu);
     last_cycle!(cpu, pinout);
     // if no interrupt do first cycle
@@ -352,7 +352,7 @@ pub fn absolute_read_c3<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut B, 
 // indirect x read
 //========================================================================
 pub fn indirect_x_read_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     cpu.ops.bal = cpu.ops.dl;
 
@@ -361,34 +361,34 @@ pub fn indirect_x_read_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pi
 }
 
 pub fn indirect_x_read_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     // read discarded - still perform read for "open bus behaivor"
     read_cycle!(cpu, bus, pinout, to_address(0, cpu.ops.bal));
     pinout
 }
 
 pub fn indirect_x_read_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(0, cpu.ops.bal.wrapping_add(cpu.x)));
     cpu.ops.adl = cpu.ops.dl;
     pinout
 }
 
 pub fn indirect_x_read_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(0, cpu.ops.bal.wrapping_add(cpu.x).wrapping_add(1)));
     cpu.ops.adh = cpu.ops.dl;
     pinout
 }
 
 pub fn indirect_x_read_c4<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(cpu.ops.adh, cpu.ops.adl));
     pinout
 }
 
 pub fn indirect_x_read_c5<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     T::execute(cpu);
     last_cycle!(cpu, pinout);
     // if no interrupt do first cycle
@@ -400,7 +400,7 @@ pub fn indirect_x_read_c5<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut B
 // absolute x read
 //========================================================================
 pub fn absolute_x_read_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     cpu.ops.bal = cpu.ops.dl;
 
@@ -409,7 +409,7 @@ pub fn absolute_x_read_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pi
 }
 
 pub fn absolute_x_read_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, u16::from(cpu.pc));
     cpu.ops.bah = cpu.ops.dl;
 
@@ -418,7 +418,7 @@ pub fn absolute_x_read_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pi
 }
 
 pub fn absolute_x_read_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     let adl = cpu.ops.bal.overflowing_add(cpu.x);
     cpu.ops.adl = adl.0;
     cpu.ops.adh = cpu.ops.bah;
@@ -429,14 +429,14 @@ pub fn absolute_x_read_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pi
 }
 
 pub fn absolute_x_read_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     cpu.ops.adh = cpu.ops.adh.wrapping_add(1);
     read_cycle!(cpu, bus, pinout, to_address(cpu.ops.adh, cpu.ops.adl));
     pinout
 }
 
 pub fn absolute_x_read_c4<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     T::execute(cpu);
     last_cycle!(cpu, pinout);
     // if no interrupt do first cycle
@@ -448,7 +448,7 @@ pub fn absolute_x_read_c4<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut B
 // absolute y read
 //========================================================================
 pub fn absolute_y_read_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     cpu.ops.bal = cpu.ops.dl;
 
@@ -457,7 +457,7 @@ pub fn absolute_y_read_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pi
 }
 
 pub fn absolute_y_read_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, u16::from(cpu.pc));
     cpu.ops.bah = cpu.ops.dl;
 
@@ -466,7 +466,7 @@ pub fn absolute_y_read_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pi
 }
 
 pub fn absolute_y_read_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     let adl = cpu.ops.bal.overflowing_add(cpu.y);
     cpu.ops.adl = adl.0;
     cpu.ops.adh = cpu.ops.bah;
@@ -477,14 +477,14 @@ pub fn absolute_y_read_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pi
 }
 
 pub fn absolute_y_read_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     cpu.ops.adh = cpu.ops.adh.wrapping_add(1);
     read_cycle!(cpu, bus, pinout, to_address(cpu.ops.adh, cpu.ops.adl));
     pinout
 }
 
 pub fn absolute_y_read_c4<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     T::execute(cpu);
     last_cycle!(cpu, pinout);
     // if no interrupt do first cycle
@@ -496,7 +496,7 @@ pub fn absolute_y_read_c4<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut B
 // zero page x read
 //========================================================================
 pub fn zeropage_x_read_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     cpu.ops.bal = cpu.ops.dl;
 
@@ -505,19 +505,19 @@ pub fn zeropage_x_read_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pi
 }
 
 pub fn zeropage_x_read_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(0, cpu.ops.bal));
     pinout
 }
 
 pub fn zeropage_x_read_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(0, cpu.ops.bal.wrapping_add(cpu.x)));
     pinout
 }
 
 pub fn zeropage_x_read_c3<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     T::execute(cpu);
     last_cycle!(cpu, pinout);
     // if no interrupt do first cycle
@@ -529,7 +529,7 @@ pub fn zeropage_x_read_c3<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut B
 // zero page y read
 //========================================================================
 pub fn zeropage_y_read_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     cpu.ops.bal = cpu.ops.dl;
 
@@ -538,19 +538,19 @@ pub fn zeropage_y_read_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pi
 }
 
 pub fn zeropage_y_read_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(0, cpu.ops.bal));
     pinout
 }
 
 pub fn zeropage_y_read_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(0, cpu.ops.bal.wrapping_add(cpu.y)));
     pinout
 }
 
 pub fn zeropage_y_read_c3<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     T::execute(cpu);
     last_cycle!(cpu, pinout);
     // if no interrupt do first cycle
@@ -562,7 +562,7 @@ pub fn zeropage_y_read_c3<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut B
 // indirect y read
 //========================================================================
 pub fn indirect_y_read_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     cpu.ops.ial = cpu.ops.dl;
 
@@ -571,7 +571,7 @@ pub fn indirect_y_read_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pi
 }
 
 pub fn indirect_y_read_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(0, cpu.ops.ial));
     cpu.ops.bal = cpu.ops.dl;
 
@@ -579,7 +579,7 @@ pub fn indirect_y_read_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pi
 }
 
 pub fn indirect_y_read_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(0, cpu.ops.ial.wrapping_add(1)));
     cpu.ops.bah = cpu.ops.dl;
 
@@ -587,7 +587,7 @@ pub fn indirect_y_read_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pi
 }
 
 pub fn indirect_y_read_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     let adl = cpu.ops.bal.overflowing_add(cpu.y);
     cpu.ops.adl = adl.0;
     cpu.ops.adh = cpu.ops.bah;
@@ -599,7 +599,7 @@ pub fn indirect_y_read_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pi
 }
 
 pub fn indirect_y_read_c4<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     cpu.ops.adh = cpu.ops.adh.wrapping_add(1);
     read_cycle!(cpu, bus, pinout, to_address(cpu.ops.adh, cpu.ops.adl));
 
@@ -607,7 +607,7 @@ pub fn indirect_y_read_c4<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pi
 }
 
 pub fn indirect_y_read_c5<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     T::execute(cpu);
     last_cycle!(cpu, pinout);
     // if no interrupt do first cycle
@@ -619,7 +619,7 @@ pub fn indirect_y_read_c5<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut B
 // zero page store
 //========================================================================
 pub fn zeropage_store_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     cpu.ops.adl = cpu.ops.dl;
 
@@ -636,7 +636,7 @@ pub fn zeropage_store_c1<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut B,
 }
 
 pub fn zeropage_store_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     first_cycle!(cpu, bus, pinout);
     pinout
 }
@@ -645,7 +645,7 @@ pub fn zeropage_store_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pin
 // absolute store
 //========================================================================
 pub fn absolute_store_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     cpu.ops.adl = cpu.ops.dl;
 
@@ -654,7 +654,7 @@ pub fn absolute_store_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pin
 }
 
 pub fn absolute_store_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, u16::from(cpu.pc));
     cpu.ops.adh = cpu.ops.dl;
 
@@ -671,7 +671,7 @@ pub fn absolute_store_c2<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut B,
 }
 
 pub fn absolute_store_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     first_cycle!(cpu, bus, pinout);
     pinout
 }
@@ -680,7 +680,7 @@ pub fn absolute_store_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pin
 // indirect x store
 //========================================================================
 pub fn indirect_x_store_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     cpu.ops.bal = cpu.ops.dl;
 
@@ -689,7 +689,7 @@ pub fn indirect_x_store_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: P
 }
 
 pub fn indirect_x_store_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     // data discarded
     read_cycle!(cpu, bus, pinout, to_address(0, cpu.ops.bal));
 
@@ -697,7 +697,7 @@ pub fn indirect_x_store_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: P
 }
 
 pub fn indirect_x_store_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(0, cpu.ops.bal.wrapping_add(cpu.x)));
     cpu.ops.adl = cpu.ops.dl;
 
@@ -705,7 +705,7 @@ pub fn indirect_x_store_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: P
 }
 
 pub fn indirect_x_store_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(0, cpu.ops.bal.wrapping_add(cpu.x).wrapping_add(1)));
     cpu.ops.adh = cpu.ops.dl;
 
@@ -721,7 +721,7 @@ pub fn indirect_x_store_c4<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut 
 }
 
 pub fn indirect_x_store_c5<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     first_cycle!(cpu, bus, pinout);
     pinout
 }
@@ -730,7 +730,7 @@ pub fn indirect_x_store_c5<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: P
 // absolute x store
 //========================================================================
 pub fn absolute_x_store_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     cpu.ops.bal = cpu.ops.dl;
 
@@ -739,7 +739,7 @@ pub fn absolute_x_store_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: P
 }
 
 pub fn absolute_x_store_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, u16::from(cpu.pc));
     cpu.ops.bah = cpu.ops.dl;
 
@@ -748,7 +748,7 @@ pub fn absolute_x_store_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: P
 }
 
 pub fn absolute_x_store_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     let bal = cpu.ops.bal.overflowing_add(cpu.x);
     cpu.ops.adl = bal.0;
     cpu.ops.adh = cpu.ops.bah.wrapping_add(bal.1 as u8);
@@ -767,7 +767,7 @@ pub fn absolute_x_store_c3<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut 
 }
 
 pub fn absolute_x_store_c4<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     first_cycle!(cpu, bus, pinout);
     pinout
 }
@@ -776,7 +776,7 @@ pub fn absolute_x_store_c4<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: P
 // absolute y store
 //========================================================================
 pub fn absolute_y_store_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     cpu.ops.bal = cpu.ops.dl;
 
@@ -785,7 +785,7 @@ pub fn absolute_y_store_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: P
 }
 
 pub fn absolute_y_store_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, u16::from(cpu.pc));
     cpu.ops.bah = cpu.ops.dl;
 
@@ -794,7 +794,7 @@ pub fn absolute_y_store_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: P
 }
 
 pub fn absolute_y_store_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     let bal = cpu.ops.bal.overflowing_add(cpu.y);
     cpu.ops.adl = bal.0;
     cpu.ops.adh = cpu.ops.bah.wrapping_add(bal.1 as u8);
@@ -813,7 +813,7 @@ pub fn absolute_y_store_c3<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut 
 }
 
 pub fn absolute_y_store_c4<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     first_cycle!(cpu, bus, pinout);
     pinout
 }
@@ -822,7 +822,7 @@ pub fn absolute_y_store_c4<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: P
 // zero page x store
 //========================================================================
 pub fn zeropage_x_store_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     cpu.ops.bal = cpu.ops.dl;
 
@@ -831,7 +831,7 @@ pub fn zeropage_x_store_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: P
 }
 
 pub fn zeropage_x_store_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     // data discarded
     read_cycle!(cpu, bus, pinout, to_address(0, cpu.ops.bal));
     pinout
@@ -846,7 +846,7 @@ pub fn zeropage_x_store_c2<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut 
 }
 
 pub fn zeropage_x_store_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     first_cycle!(cpu, bus, pinout);
     pinout
 }
@@ -855,7 +855,7 @@ pub fn zeropage_x_store_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: P
 // zero page y store
 //========================================================================
 pub fn zeropage_y_store_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     cpu.ops.bal = cpu.ops.dl;
 
@@ -864,7 +864,7 @@ pub fn zeropage_y_store_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: P
 }
 
 pub fn zeropage_y_store_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     // data discarded
     read_cycle!(cpu, bus, pinout, to_address(0, cpu.ops.bal));
     pinout
@@ -879,7 +879,7 @@ pub fn zeropage_y_store_c2<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut 
 }
 
 pub fn zeropage_y_store_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     first_cycle!(cpu, bus, pinout);
     pinout
 }
@@ -888,7 +888,7 @@ pub fn zeropage_y_store_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: P
 // indirect y store
 //========================================================================
 pub fn indirect_y_store_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     cpu.ops.ial = cpu.ops.dl;
 
@@ -897,7 +897,7 @@ pub fn indirect_y_store_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: P
 }
 
 pub fn indirect_y_store_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(0, cpu.ops.ial));
     cpu.ops.bal = cpu.ops.dl;
 
@@ -905,7 +905,7 @@ pub fn indirect_y_store_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: P
 }
 
 pub fn indirect_y_store_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(0, cpu.ops.ial.wrapping_add(1)));
     cpu.ops.bah = cpu.ops.dl;
 
@@ -913,7 +913,7 @@ pub fn indirect_y_store_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: P
 }
 
 pub fn indirect_y_store_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     cpu.ops.adl = cpu.ops.bal.wrapping_add(cpu.y);
     cpu.ops.adh = cpu.ops.bah;
     // data discarded
@@ -931,7 +931,7 @@ pub fn indirect_y_store_c4<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut 
 }
 
 pub fn indirect_y_store_c5<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     first_cycle!(cpu, bus, pinout);
     pinout
 }
@@ -940,7 +940,7 @@ pub fn indirect_y_store_c5<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: P
 // zero page modify
 //========================================================================
 pub fn zeropage_modify_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     cpu.ops.adl = cpu.ops.dl;
 
@@ -949,7 +949,7 @@ pub fn zeropage_modify_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pi
 }
 
 pub fn zeropage_modify_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(0, cpu.ops.adl));
     pinout
 }
@@ -972,7 +972,7 @@ pub fn zeropage_modify_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pi
 }
 
 pub fn zeropage_modify_c4<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     first_cycle!(cpu, bus, pinout);
     pinout
 }
@@ -981,7 +981,7 @@ pub fn zeropage_modify_c4<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pi
 // absolute modify
 //========================================================================
 pub fn absolute_modify_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     cpu.ops.adl = cpu.ops.dl;
 
@@ -990,7 +990,7 @@ pub fn absolute_modify_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pi
 }
 
 pub fn absolute_modify_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, u16::from(cpu.pc));
     cpu.ops.adh = cpu.ops.dl;
 
@@ -999,7 +999,7 @@ pub fn absolute_modify_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pi
 }
 
 pub fn absolute_modify_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(cpu.ops.adh, cpu.ops.adl));
     pinout
 }
@@ -1022,7 +1022,7 @@ pub fn absolute_modify_c4<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pi
 }
 
 pub fn absolute_modify_c5<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     first_cycle!(cpu, bus, pinout);
     pinout
 }
@@ -1031,7 +1031,7 @@ pub fn absolute_modify_c5<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pi
 // zero page x modify
 //========================================================================
 pub fn zeropage_x_modify_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     cpu.ops.bal = cpu.ops.dl;
 
@@ -1040,7 +1040,7 @@ pub fn zeropage_x_modify_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: 
 }
 
 pub fn zeropage_x_modify_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     // data discarded
     cpu.ops.adl = cpu.ops.bal.wrapping_add(cpu.x);
     read_cycle!(cpu, bus,pinout, to_address(0, cpu.ops.adl));
@@ -1049,7 +1049,7 @@ pub fn zeropage_x_modify_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: 
 }
 
 pub fn zeropage_x_modify_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(0, cpu.ops.adl));
     pinout
 }
@@ -1072,7 +1072,7 @@ pub fn zeropage_x_modify_c4<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: 
 }
 
 pub fn zeropage_x_modify_c5<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     first_cycle!(cpu, bus, pinout);
     pinout
 }
@@ -1081,7 +1081,7 @@ pub fn zeropage_x_modify_c5<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: 
 // absolute x modify
 //========================================================================
 pub fn absolute_x_modify_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     cpu.ops.bal = cpu.ops.dl;
 
@@ -1090,7 +1090,7 @@ pub fn absolute_x_modify_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: 
 }
 
 pub fn absolute_x_modify_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, u16::from(cpu.pc));
     cpu.ops.bah = cpu.ops.dl;
 
@@ -1099,7 +1099,7 @@ pub fn absolute_x_modify_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: 
 }
 
 pub fn absolute_x_modify_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     // data discarded
     let adl =  cpu.ops.bal.overflowing_add(cpu.x);
     cpu.ops.adl = adl.0;
@@ -1110,7 +1110,7 @@ pub fn absolute_x_modify_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: 
 }
 
 pub fn absolute_x_modify_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(cpu.ops.adh, cpu.ops.adl));
     pinout
 }
@@ -1133,7 +1133,7 @@ pub fn absolute_x_modify_c5<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: 
 }
 
 pub fn absolute_x_modify_c6<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     first_cycle!(cpu, bus, pinout);
     pinout
 }
@@ -1142,7 +1142,7 @@ pub fn absolute_x_modify_c6<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: 
 // php
 //========================================================================
 pub fn php_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     // data discarded
     pinout
@@ -1158,7 +1158,7 @@ pub fn php_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pin
 }
 
 pub fn php_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     first_cycle!(cpu, bus, pinout);
     pinout
 }
@@ -1167,7 +1167,7 @@ pub fn php_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pin
 // pha
 //========================================================================
 pub fn pha_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     // data discarded
     pinout
@@ -1183,7 +1183,7 @@ pub fn pha_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pin
 }
 
 pub fn pha_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     first_cycle!(cpu, bus, pinout);
     pinout
 }
@@ -1192,21 +1192,21 @@ pub fn pha_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pin
 // plp
 //========================================================================
 pub fn plp_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     // data discarded
     pinout
 }
 
 pub fn plp_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     // data discarded
     read_cycle!(cpu, bus, pinout, to_address(0x1, cpu.sp));
     pinout
 }
 
 pub fn plp_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     cpu.sp = cpu.sp.wrapping_add(1);
     read_cycle!(cpu, bus, pinout, to_address(0x1, cpu.sp));
     cpu.p = FlagsRegister::from(cpu.ops.dl);
@@ -1216,7 +1216,7 @@ pub fn plp_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pin
 }
 
 pub fn plp_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     first_cycle!(cpu, bus, pinout);
     pinout
 }
@@ -1225,21 +1225,21 @@ pub fn plp_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pin
 // pla
 //========================================================================
 pub fn pla_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     // data discarded
     pinout
 }
 
 pub fn pla_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     // data discarded
     read_cycle!(cpu, bus, pinout, to_address(0x1, cpu.sp));
     pinout
 }
 
 pub fn pla_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     cpu.sp = cpu.sp.wrapping_add(1);
     read_cycle!(cpu, bus, pinout, to_address(0x1, cpu.sp));
     cpu.a = cpu.ops.dl;
@@ -1252,7 +1252,7 @@ pub fn pla_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pin
 }
 
 pub fn pla_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     first_cycle!(cpu, bus, pinout);
     pinout
 }
@@ -1261,7 +1261,7 @@ pub fn pla_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pin
 // jsr
 //========================================================================
 pub fn jsr_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     cpu.ops.adl = cpu.ops.dl;
 
@@ -1270,7 +1270,7 @@ pub fn jsr_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pin
 }
 
 pub fn jsr_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     // read from sp - data discarded
     read_cycle!(cpu, bus, pinout, to_address(0x1, cpu.sp));
 
@@ -1292,7 +1292,7 @@ pub fn jsr_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pin
 }
 
 pub fn jsr_c4<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, u16::from(cpu.pc));
     cpu.ops.adh = cpu.ops.dl;
     cpu.pc.pcl = cpu.ops.adl;
@@ -1303,7 +1303,7 @@ pub fn jsr_c4<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pin
 }
 
 pub fn jsr_c5<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     first_cycle!(cpu, bus, pinout);
     pinout
 }
@@ -1312,7 +1312,7 @@ pub fn jsr_c5<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pin
 // rti
 //========================================================================
 pub fn rti_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     // data discarded
 
@@ -1320,7 +1320,7 @@ pub fn rti_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pin
 }
 
 pub fn rti_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     // read from sp - data discarded
     read_cycle!(cpu, bus, pinout, to_address(0x1, cpu.sp));
     cpu.sp = cpu.sp.wrapping_add(1);
@@ -1329,7 +1329,7 @@ pub fn rti_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pin
 }
 
 pub fn rti_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(0x1, cpu.sp));
     cpu.p = FlagsRegister::pull(cpu.ops.dl);
     cpu.sp = cpu.sp.wrapping_add(1);
@@ -1338,7 +1338,7 @@ pub fn rti_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pin
 }
 
 pub fn rti_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(1, cpu.sp));
     cpu.pc.pcl = cpu.ops.dl;
     cpu.sp = cpu.sp.wrapping_add(1);
@@ -1347,7 +1347,7 @@ pub fn rti_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pin
 }
 
 pub fn rti_c4<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(1, cpu.sp));
     cpu.pc.pch = cpu.ops.dl;
 
@@ -1356,7 +1356,7 @@ pub fn rti_c4<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pin
 }
 
 pub fn rti_c5<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     first_cycle!(cpu, bus, pinout);
     pinout
 }
@@ -1365,7 +1365,7 @@ pub fn rti_c5<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pin
 // jump absolute
 //========================================================================
 pub fn jmp_absolute_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     cpu.ops.adl = cpu.ops.dl;
 
@@ -1374,7 +1374,7 @@ pub fn jmp_absolute_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinou
 }
 
 pub fn jmp_absolute_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout,  u16::from(cpu.pc));
     cpu.ops.adh = cpu.ops.dl;
 
@@ -1386,7 +1386,7 @@ pub fn jmp_absolute_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinou
 }
 
 pub fn jmp_absolute_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     first_cycle!(cpu, bus, pinout);
     pinout
 }
@@ -1395,7 +1395,7 @@ pub fn jmp_absolute_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinou
 // jump indirect
 //========================================================================
 pub fn jmp_indirect_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     cpu.ops.ial = cpu.ops.dl;
 
@@ -1404,7 +1404,7 @@ pub fn jmp_indirect_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinou
 }
 
 pub fn jmp_indirect_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, u16::from(cpu.pc));
     cpu.ops.iah = cpu.ops.dl;
 
@@ -1412,7 +1412,7 @@ pub fn jmp_indirect_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinou
 }
 
 pub fn jmp_indirect_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(cpu.ops.iah, cpu.ops.ial));
     cpu.ops.adl = cpu.ops.dl;
 
@@ -1420,7 +1420,7 @@ pub fn jmp_indirect_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinou
 }
 
 pub fn jmp_indirect_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(cpu.ops.iah, cpu.ops.ial.wrapping_add(1)));
     cpu.ops.adh = cpu.ops.dl;
 
@@ -1432,7 +1432,7 @@ pub fn jmp_indirect_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinou
 }
 
 pub fn jmp_indirect_c4<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     first_cycle!(cpu, bus, pinout);
     pinout
 }
@@ -1441,14 +1441,14 @@ pub fn jmp_indirect_c4<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinou
 // rts
 //========================================================================
 pub fn rts_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     // data discarded
     pinout
 }
 
 pub fn rts_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     // read from sp - data discarded
     read_cycle!(cpu, bus, pinout, to_address(0x1, cpu.sp));
     cpu.sp = cpu.sp.wrapping_add(1);
@@ -1456,7 +1456,7 @@ pub fn rts_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pin
 }
 
 pub fn rts_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(0x1, cpu.sp));
     cpu.pc.pcl = cpu.ops.dl;
     cpu.sp = cpu.sp.wrapping_add(1);
@@ -1464,14 +1464,14 @@ pub fn rts_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pin
 }
 
 pub fn rts_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(0x1, cpu.sp));
     cpu.pc.pch = cpu.ops.dl;
     pinout
 }
 
 pub fn rts_c4<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     // data discarded
     read_cycle!(cpu, bus, pinout, u16::from(cpu.pc));
     cpu.pc.increment();
@@ -1480,7 +1480,7 @@ pub fn rts_c4<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pin
 }
 
 pub fn rts_c5<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     first_cycle!(cpu, bus, pinout);
     pinout
 }
@@ -1491,7 +1491,7 @@ pub fn rts_c5<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pin
 // http://forum.6502.org/viewtopic.php?t=1634
 //========================================================================
 pub fn branch_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     cpu.ops.offset = cpu.ops.dl;
     // branch always checks for interrupts on this cycle
@@ -1501,7 +1501,7 @@ pub fn branch_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> 
 }
 
 pub fn branch_c1<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     T::execute(cpu);
     // fetch next opcode 
     if cpu.ops.branch_taken == false {
@@ -1530,7 +1530,7 @@ pub fn branch_c1<B: Bus, T: Instruction>(cpu: &mut Context, bus: &mut B, mut pin
 }
 
 pub fn branch_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     // check if page boundry crossed
     if cpu.ops.offset_carry == true {
         if cpu.ops.offset_neg == true { cpu.pc.pch = cpu.pc.pch.wrapping_sub(1); }
@@ -1548,7 +1548,7 @@ pub fn branch_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> 
 }
 
 pub fn branch_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     first_cycle!(cpu, bus, pinout);
     pinout
 }
@@ -1557,7 +1557,7 @@ pub fn branch_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> 
 // undocumented indirect x
 //================================================================
 pub fn undoc_indirect_x_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     cpu.ops.bal = cpu.ops.dl;
 
@@ -1566,28 +1566,28 @@ pub fn undoc_indirect_x_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: P
 }
 
 pub fn undoc_indirect_x_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     // read discarded - still perform read for "open bus behaivor"
     read_cycle!(cpu, bus, pinout, to_address(0, cpu.ops.bal));
     pinout
 }
 
 pub fn undoc_indirect_x_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(0, cpu.ops.bal + cpu.x));
     cpu.ops.adl = cpu.ops.dl;
     pinout
 }
 
 pub fn undoc_indirect_x_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(0, cpu.ops.bal + cpu.x + 1));
     cpu.ops.adh = cpu.ops.dl;
     pinout
 }
 
 pub fn undoc_indirect_x_c4<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(cpu.ops.adh, cpu.ops.adl));
     pinout
 }
@@ -1607,7 +1607,7 @@ pub fn undoc_indirect_x_c6<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: P
 }
 
 pub fn undoc_indirect_x_c7<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     first_cycle!(cpu, bus, pinout);
     pinout
 }
@@ -1616,7 +1616,7 @@ pub fn undoc_indirect_x_c7<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: P
 // undocumented indirect y
 //================================================================
 pub fn undoc_indirect_y_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     cpu.ops.ial = cpu.ops.dl;
 
@@ -1625,21 +1625,21 @@ pub fn undoc_indirect_y_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: P
 }
 
 pub fn undoc_indirect_y_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(0, cpu.ops.ial));
     cpu.ops.bal = cpu.ops.dl;
     pinout
 }
 
 pub fn undoc_indirect_y_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(0, cpu.ops.ial.wrapping_add(1)));
     cpu.ops.bah = cpu.ops.dl;
     pinout
 }
 
 pub fn undoc_indirect_y_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     let adl = cpu.ops.bal.overflowing_add(cpu.y);
     cpu.ops.adl = adl.0;
     cpu.ops.adh = cpu.ops.bah;
@@ -1649,7 +1649,7 @@ pub fn undoc_indirect_y_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: P
 }
 
 pub fn undoc_indirect_y_c4<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     let adl = cpu.ops.bal.overflowing_add(cpu.y);
     cpu.ops.adl = adl.0;
     cpu.ops.adh = cpu.ops.adh.wrapping_add(adl.1 as u8);
@@ -1673,7 +1673,7 @@ pub fn undoc_indirect_y_c6<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: P
 }
 
 pub fn undoc_indirect_y_c7<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     first_cycle!(cpu, bus, pinout);
     pinout
 }
@@ -1682,7 +1682,7 @@ pub fn undoc_indirect_y_c7<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: P
 // undocumented absolute y
 //================================================================
 pub fn undoc_absolute_y_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     second_cycle!(cpu, bus, pinout);
     cpu.ops.bal = cpu.ops.dl;
 
@@ -1691,7 +1691,7 @@ pub fn undoc_absolute_y_c0<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: P
 }
 
 pub fn undoc_absolute_y_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, u16::from(cpu.pc));
     cpu.ops.bah = cpu.ops.dl;
 
@@ -1700,7 +1700,7 @@ pub fn undoc_absolute_y_c1<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: P
 }
 
 pub fn undoc_absolute_y_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     let adl = cpu.ops.bal.overflowing_add(cpu.y);
     cpu.ops.adl = adl.0;
     cpu.ops.adh = cpu.ops.bah.wrapping_add(adl.1 as u8);
@@ -1711,7 +1711,7 @@ pub fn undoc_absolute_y_c2<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: P
 }
 
 pub fn undoc_absolute_y_c3<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     read_cycle!(cpu, bus, pinout, to_address(cpu.ops.adh, cpu.ops.adl));
     pinout
 }
@@ -1731,7 +1731,7 @@ pub fn undoc_absolute_y_c5<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: P
 }
 
 pub fn undoc_absolute_y_c6<B: Bus>(cpu: &mut Context, bus: &mut B, mut pinout: Pinout) -> Pinout {
-    if pinout.rdy == Pin::Off { return pinout; }
+    if pinout.ctrl.contains(Ctrl::RDY) == false { return pinout; }
     first_cycle!(cpu, bus, pinout);
     pinout
 }

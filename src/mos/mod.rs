@@ -4,6 +4,8 @@ mod operations;
 pub mod bus;
 pub mod rp2a03;
 
+use bitflags;
+
 /*
 Mos 6502
 
@@ -33,10 +35,21 @@ access until the pin goes inactive.
 
 */
 
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum Pin {
-    On,
-    Off,
+bitflags! {
+    pub struct Ctrl: u8 {
+        const RW =   0b00000001;    // R read /W Write
+        const SYNC = 0b00000010;    // SYNC first cycle of instruction
+        const IRQ =  0b00000100;    // /IRQ maskable interrupt
+        const NMI =  0b00001000;    // /NMI non maskable interrupt
+        const RDY =  0b00010000;    // RDY cpu is ready /RDY cpu is not ready and is paused during next read cycle
+        const HALT = 0b00100000;    // /HALT cpu is halted, only on Atari "SALLY" cpu
+    }
+}
+
+impl Default for Ctrl {
+    fn default() -> Ctrl {
+        Ctrl::RW | Ctrl::IRQ | Ctrl::NMI | Ctrl::RDY | Ctrl::HALT
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -46,12 +59,7 @@ pub struct Pinout {
     pub opt0: u8,
     pub opt1: u8,
     pub io: u8,         // (6510 only) input-output pin
-    pub rw: Pin,        // memory read or write access (high read, low write)
-    pub sync: Pin,      // start of a new instruction *not actual pin on Rp2a03, used for debugging emulator
-    pub irq: Pin,       // maskable interrupt requested, active low 
-    pub nmi: Pin,       // non-maskable interrupt requested, active low
-    pub rdy: Pin,       // freeze execution at next read cycle, gnd when cpu is not ready
-    pub halt: Pin,      // (6502C only) freeze execution immedialty
+    pub ctrl: Ctrl,
 }
 
 //external state of cpu
@@ -63,12 +71,7 @@ impl Pinout {
             opt0: 0,
             opt1: 0,
             io: 0,
-            rw: Pin::On,
-            sync: Pin::Off,
-            irq: Pin::On,
-            nmi: Pin::On,
-            rdy: Pin::On,
-            halt: Pin::On,
+            ctrl: Default::default(),
         }
     }
 }

@@ -1,7 +1,7 @@
 use super::core::*;
 use super::operations::*;
 use super::instructions::*;
-use super::{Pin, Pinout};
+use super::{Ctrl, Pinout};
 use super::bus::Bus;
 
 
@@ -1401,32 +1401,32 @@ impl Rp2a03 {
             _ => panic!("{}: is an invalid opcode", u16::from(self.cpu.ir)),
         }
 
-        if pinout.nmi == Pin::Off {
+        if pinout.ctrl.contains(Ctrl::NMI) == false {
             self.cpu.nmi_detected = true;
         }
 
         // "pull up" input pins. these must be asserted every cycle they wish to remain active
-        pinout.nmi = Pin::On;
-        pinout.irq = Pin::On;
-        pinout.rdy = Pin::On;
-        pinout.halt = Pin::On;
+        pinout.ctrl.set(Ctrl::NMI, true);
+        pinout.ctrl.set(Ctrl::IRQ, true);
+        pinout.ctrl.set(Ctrl::RDY, true);
+        pinout.ctrl.set(Ctrl::HALT, true);
 
         self.cpu.cycle += 1;
         pinout
     }
 
-    pub fn cycle(&self) -> u64 {
+    pub fn cycle_count(&self) -> u64 {
         self.cpu.cycle
     }
 
-    pub fn debug_reset(&mut self, program_counter: u16, bus: &mut dyn Bus) -> Pinout {
+    pub fn debug_reset<B: Bus>(&mut self, program_counter: u16, bus: &mut B) -> Pinout {
         self.cpu = Context::new();
         let mut pinout = Pinout::new();
 
         self.cpu.ir.opcode = 0x00;
         self.cpu.ir.tm = 0x10;
 
-        pinout.rw = Pin::Off;
+        pinout.ctrl.set(Ctrl::RW, false);
         pinout.address = 0xFFFD;
         pinout.data = ((program_counter & 0xFF00) >> 8) as u8;
         pinout = bus.write(pinout);
@@ -1435,7 +1435,7 @@ impl Rp2a03 {
         pinout.data = (program_counter & 0x00FF) as u8;
         pinout = bus.write(pinout);
 
-        pinout.rw = Pin::On;
+        pinout.ctrl.set(Ctrl::RW, true);
 
         pinout
     }

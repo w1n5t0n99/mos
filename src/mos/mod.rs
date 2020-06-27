@@ -45,14 +45,12 @@ pub struct Pinout {
     pub data: u8,
     pub opt0: u8,
     pub opt1: u8,
-    pub opt2: u8,
     pub io: u8,         // (6510 only) input-output pin
     pub rw: Pin,        // memory read or write access (high read, low write)
     pub sync: Pin,      // start of a new instruction *not actual pin on Rp2a03, used for debugging emulator
     pub irq: Pin,       // maskable interrupt requested, active low 
     pub nmi: Pin,       // non-maskable interrupt requested, active low
     pub rdy: Pin,       // freeze execution at next read cycle, gnd when cpu is not ready
-    pub rst: Pin,       // reset CPU
     pub halt: Pin,      // (6502C only) freeze execution immedialty
 }
 
@@ -64,14 +62,12 @@ impl Pinout {
             data: 0,
             opt0: 0,
             opt1: 0,
-            opt2: 0,
             io: 0,
             rw: Pin::On,
             sync: Pin::Off,
             irq: Pin::On,
             nmi: Pin::On,
             rdy: Pin::On,
-            rst: Pin::On,
             halt: Pin::On,
         }
     }

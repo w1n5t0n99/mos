@@ -48,7 +48,33 @@ impl Instruction for Adc {
             cpu.p.negative = set_negative(cpu.a);
         }
         else {
-            panic!("decimal mode uniplemented");
+            // decimal mode (MAME implementation)
+            let c: u8 = if cpu.p.carry == true {1} else {0};
+            cpu.p.carry = false;
+            cpu.p.overflow = false;
+            cpu.p.negative = false;
+            cpu.p.zero = false;
+
+            let mut al = (cpu.a & 0x0F) + (cpu.ops.dl & 0x0F) + c;
+            if al > 9 { al += 6; }
+
+            let mut ah = (cpu.a >> 4) + (cpu.ops.dl >> 4) + ((al > 0x0F) as u8);
+
+            if (cpu.a.wrapping_add(cpu.ops.dl)).wrapping_add(c) == 0 {
+                cpu.p.zero = true;
+            }
+            else if (ah & 0x8) > 0 {
+                cpu.p.negative = true;
+            }
+
+            if (!(cpu.a ^ cpu.ops.dl) & (cpu.a ^ (ah << 4)) & 0x80) > 0 {
+                cpu.p.overflow = true;
+            }
+
+            if ah > 9 { ah += 6; }
+            if ah > 15 { cpu.p.carry = true; }
+
+            cpu.a = (ah << 4) | (al & 0x0F);
         }
     }
 }
@@ -401,26 +427,15 @@ impl Instruction for RorAccum {
 pub struct SbcNoDec {}
 impl Instruction for SbcNoDec {
     fn execute(cpu: &mut Context) {
-    /* 
-    let (x1, o1) = cpu.a.overflowing_sub(cpu.ops.dl);
-    let (x2, o2) = x1.overflowing_sub(!cpu.p.carry as u8);
-    cpu.p.carry = !(o1 | o2);
-
-    let signed_sub = (cpu.a as i8 as i16) - (cpu.ops.dl as i8 as i16) - (1 - (cpu.p.carry as i16));
-    cpu.a = x2;
-    cpu.p.overflow = (signed_sub < -128) || (signed_sub > 127);
-    cpu.p.zero = set_zero(cpu.a);
-    cpu.p.negative = set_negative(cpu.a);
-    */
-    let dl = cpu.ops.dl ^ 0xFF;
-    //let sum = cpu.a.wrapping_add(dl).wrapping_add(cpu.p.carry as u8);
-    let sum = (cpu.a as u16) + (dl as u16) + cpu.p.carry as u16;
-    let result = (sum & 0xFF) as u8;
-    cpu.p.carry = if sum > 255 { true } else { false };
-    cpu.p.overflow = if ((cpu.a ^ result) & (dl ^ result) & 0x80) != 0 { true } else { false };
-    cpu.a = result;
-    cpu.p.negative = set_negative(cpu.a);
-    cpu.p.zero = set_zero(cpu.a);  
+        let dl = cpu.ops.dl ^ 0xFF;
+        //let sum = cpu.a.wrapping_add(dl).wrapping_add(cpu.p.carry as u8);
+        let sum = (cpu.a as u16) + (dl as u16) + cpu.p.carry as u16;
+        let result = (sum & 0xFF) as u8;
+        cpu.p.carry = if sum > 255 { true } else { false };
+        cpu.p.overflow = if ((cpu.a ^ result) & (dl ^ result) & 0x80) != 0 { true } else { false };
+        cpu.a = result;
+        cpu.p.negative = set_negative(cpu.a);
+        cpu.p.zero = set_zero(cpu.a);  
     }
 }
 
@@ -439,7 +454,37 @@ impl Instruction for Sbc {
             cpu.p.zero = set_zero(cpu.a);
         }
         else {
-            panic!("decimal mode not implemented");
+            // decimal mode (MAME implementation)
+            let c: u8 = if cpu.p.carry == true {1} else {0};
+            cpu.p.carry = false;
+            cpu.p.overflow = false;
+            cpu.p.negative = false;
+            cpu.p.zero = false;
+
+            let diff: u16 = ((cpu.a as u16).wrapping_sub(cpu.ops.dl as u16)).wrapping_sub(c as u16);
+            let mut al = ((cpu.a & 0x0F).wrapping_sub(cpu.ops.dl & 0x0F)).wrapping_sub(c);
+
+            if  (al as i8) < 0 {
+                al -= 6;
+            }
+
+            let mut ah = ((cpu.a >> 4).wrapping_sub(cpu.ops.dl >> 4)).wrapping_sub(((al as i8) < 0) as u8);
+
+            if (diff as u8) == 0 {
+                cpu.p.zero = true;
+            }
+            else if (diff & 0x80) > 0 {
+                cpu.p.negative = true;
+            }
+
+            if ((cpu.a as u16 ^ cpu.ops.dl as u16) & (cpu.a as u16 ^ diff) & 0x80) > 0 {
+                cpu.p.overflow = true;
+            }
+
+            if (!(diff & 0xFF00)) > 0 { cpu.p.carry = true; }
+            if (ah & 0x80) > 0 { ah -= 6; }
+
+            cpu.a = (ah << 4) | (al & 0x0F);
         }    
     }
 }

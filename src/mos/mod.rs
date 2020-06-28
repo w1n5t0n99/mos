@@ -58,7 +58,8 @@ pub struct Pinout {
     pub data: u8,
     pub opt0: u8,
     pub opt1: u8,
-    pub io: u8,         // (6510 only) input-output pin
+    pub opt2: u8,
+    pub io: u8,         // (io pins 6510 only / controller pins rp2a03 only) 
     pub ctrl: Ctrl,
 }
 
@@ -70,6 +71,7 @@ impl Pinout {
             data: 0,
             opt0: 0,
             opt1: 0,
+            opt2: 0,
             io: 0,
             ctrl: Default::default(),
         }

@@ -16,6 +16,9 @@ impl Rp2a03 {
     }
 
     pub fn tick<B: Bus>(&mut self, bus: &mut B, mut pinout: Pinout) -> Pinout {
+		//default RW pin to 1
+		pinout.ctrl.set(Ctrl::RW, true);
+		
         match u16::from(self.cpu.ir) {
             // reset
             0x0010 =>  pinout = rst_c0(&mut self.cpu, bus, pinout),
